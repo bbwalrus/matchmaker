@@ -38,14 +38,18 @@ func main() {
 
 	store := matchmaking.NewRedisStore(client)
 	hub := realtime.NewHub()
-	api := httpapi.NewServer(store, hub)
+	api := httpapi.NewServer(store, hub, os.Getenv("FRONTEND_ORIGIN"))
 
 	go hub.Run(ctx)
 	go runMatcher(ctx, store, hub)
 
 	addr := os.Getenv("ADDR")
 	if addr == "" {
-		addr = ":8080"
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+		addr = ":" + port
 	}
 	server := &http.Server{
 		Addr:              addr,

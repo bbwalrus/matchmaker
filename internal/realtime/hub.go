@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -68,36 +69,53 @@ func (h *Hub) pingClients() {
 }
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-	}
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("upgrade websocket: %v", err)
-		return
-	}
+	h.ServeWSWithOrigin("")(w, r)
+}
 
-	c := &client{conn: conn}
-	h.mu.Lock()
-	h.clients[c] = struct{}{}
-	h.mu.Unlock()
-
-	defer func() {
-		h.mu.Lock()
-		delete(h.clients, c)
-		h.mu.Unlock()
-		_ = conn.Close()
-	}()
-
-	conn.SetReadLimit(1024)
-	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	})
-	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+func (h *Hub) ServeWSWithOrigin(allowedOrigin string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true
+				}
+				if allowedOrigin != "" && origin == allowedOrigin {
+					return true
+				}
+				parsed, err := url.Parse(origin)
+				return err == nil && parsed.Host == r.Host && (parsed.Scheme == "http" || parsed.Scheme == "https")
+			},
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("upgrade websocket: %v", err)
 			return
+		}
+
+		c := &client{conn: conn}
+		h.mu.Lock()
+		h.clients[c] = struct{}{}
+		h.mu.Unlock()
+
+		defer func() {
+			h.mu.Lock()
+			delete(h.clients, c)
+			h.mu.Unlock()
+			_ = conn.Close()
+		}()
+
+		conn.SetReadLimit(1024)
+		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		})
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
 		}
 	}
 }

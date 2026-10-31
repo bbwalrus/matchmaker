@@ -97,3 +97,36 @@ func TestActiveLobbiesEndpointReturnsLobbies(t *testing.T) {
 		t.Errorf("lobbies = %+v, want %+v", got, want)
 	}
 }
+
+func TestConfiguredFrontendOriginCanCallAPI(t *testing.T) {
+	server := NewServer(
+		fakeQueueStore{metrics: model.QueueMetrics{Region: "na-west"}},
+		realtime.NewHub(),
+		"https://matchmaker.vercel.app",
+	)
+	request := httptest.NewRequest(http.MethodGet, "/api/metrics?region=na-west", nil)
+	request.Header.Set("Origin", "https://matchmaker.vercel.app")
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "https://matchmaker.vercel.app" {
+		t.Errorf("allow-origin = %q, want configured frontend origin", got)
+	}
+}
+
+func TestConfiguredFrontendOriginRejectsOtherOrigins(t *testing.T) {
+	server := NewServer(fakeQueueStore{}, realtime.NewHub(), "https://matchmaker.vercel.app")
+	request := httptest.NewRequest(http.MethodGet, "/api/metrics?region=na-west", nil)
+	request.Header.Set("Origin", "https://unexpected.example")
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}

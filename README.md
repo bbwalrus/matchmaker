@@ -48,8 +48,13 @@ Start the Go server in one terminal, then from `web/` run `npm install` once
 and `npm run dev`. Open the URL printed by Vite (normally
 `http://localhost:5173`). The Vite development proxy forwards `/api`,
 `/healthz`, and `/ws` to the Go server on port 8080, including the WebSocket
-upgrade. No `VITE_BACKEND_URL` is needed for local development; change the
-proxy target in `web/vite.config.js` if the Go server uses a different address.
+upgrade. For Vercel, set `VITE_API_BASE_URL` to the deployed Go backend origin
+(for example, `https://your-service.onrender.com`) in the Vercel project
+environment settings and redeploy. This is a public backend URL, not a secret.
+On the backend host, set `FRONTEND_ORIGIN` to the exact deployed frontend origin
+(for example, `https://your-project.vercel.app`) so browser API requests and
+WebSocket upgrades from that site are allowed. Leave `VITE_API_BASE_URL`
+unset for local development through the Vite proxy.
 
 The dashboard supports queue joins, bot bursts, WebSocket status, a live queue
 histogram, queue size, average wait, active lobby counts, and match cards with

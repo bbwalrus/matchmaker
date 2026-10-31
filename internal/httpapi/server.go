@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -24,16 +25,22 @@ type queueStore interface {
 }
 
 type Server struct {
-	store queueStore
-	hub   *realtime.Hub
+	store                 queueStore
+	hub                   *realtime.Hub
+	allowedFrontendOrigin string
 }
 
-func NewServer(store queueStore, hub *realtime.Hub) *Server {
-	return &Server{store: store, hub: hub}
+func NewServer(store queueStore, hub *realtime.Hub, allowedFrontendOrigin ...string) *Server {
+	server := &Server{store: store, hub: hub}
+	if len(allowedFrontendOrigin) > 0 {
+		server.allowedFrontendOrigin = strings.TrimRight(allowedFrontendOrigin[0], "/")
+	}
+	return server
 }
 
 func (s *Server) Handler() http.Handler {
 	router := chi.NewRouter()
+	router.Use(s.cors)
 	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -41,8 +48,36 @@ func (s *Server) Handler() http.Handler {
 	router.Post("/api/queue/simulate", s.simulate)
 	router.Get("/api/metrics", s.queueMetrics)
 	router.Get("/api/lobbies", s.activeLobbies)
-	router.Get("/ws", s.hub.ServeWS)
+	router.Get("/ws", s.hub.ServeWSWithOrigin(s.allowedFrontendOrigin))
 	return router
+}
+
+func (s *Server) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && s.allowedFrontendOrigin != "" {
+			if origin != s.allowedFrontendOrigin && !sameOrigin(origin, r.Host) {
+				http.Error(w, "origin not allowed", http.StatusForbidden)
+				return
+			}
+			if origin == s.allowedFrontendOrigin {
+				w.Header().Set("Access-Control-Allow-Origin", s.allowedFrontendOrigin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+				w.Header().Add("Vary", "Origin")
+			}
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func sameOrigin(origin, host string) bool {
+	parsed, err := url.Parse(origin)
+	return err == nil && parsed.Host == host && (parsed.Scheme == "http" || parsed.Scheme == "https")
 }
 
 func (s *Server) queueMetrics(w http.ResponseWriter, r *http.Request) {

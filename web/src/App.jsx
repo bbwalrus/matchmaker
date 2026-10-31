@@ -21,6 +21,7 @@ import {
   WifiOff,
   Zap,
 } from "lucide-react";
+import { apiURL, webSocketURL } from "./config.js";
 
 const regions = [
   { value: "na-west", label: "North America West", short: "NA-W" },
@@ -62,8 +63,8 @@ function App() {
       controller = new AbortController();
       try {
         const [metricsResponse, lobbiesResponse] = await Promise.all([
-          fetch(`/api/metrics?region=${encodeURIComponent(region)}`, { signal: controller.signal }),
-          fetch(`/api/lobbies?region=${encodeURIComponent(region)}`, { signal: controller.signal }),
+          fetch(apiURL(`/api/metrics?region=${encodeURIComponent(region)}`), { signal: controller.signal }),
+          fetch(apiURL(`/api/lobbies?region=${encodeURIComponent(region)}`), { signal: controller.signal }),
         ]);
         if (!metricsResponse.ok) {
           throw new Error((await metricsResponse.text()).trim() || `Metrics request failed (${metricsResponse.status})`);
@@ -120,8 +121,7 @@ function App() {
 
     function connect() {
       if (!active) return;
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+      socket = new WebSocket(webSocketURL());
       setConnection("connecting");
 
       socket.onopen = () => {
@@ -175,7 +175,7 @@ function App() {
     setBusy(action);
     setNotice(null);
     try {
-      const response = await fetch(path, {
+      const response = await fetch(apiURL(path), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

@@ -7,7 +7,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/api": backend,
+      "/api": {
+        target: backend,
+        changeOrigin: true,
+      },
       "/healthz": backend,
       "/ws": {
         target: backend,
